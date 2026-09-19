@@ -80,6 +80,20 @@ else
 fi
 chmod +x "$INSTALL_DIR/collector.py"
 
+# Descargar e instalar comando 'vigia-fix'
+FIX_SRC="$(dirname "$0")/fix.sh"
+if [ -f "$FIX_SRC" ]; then
+  cp "$FIX_SRC" "$INSTALL_DIR/fix.sh"
+elif curl -sSLf "${API_URL%/}/fix.sh" -o "$INSTALL_DIR/fix.sh" 2>/dev/null; then
+  echo "[*] Descargado vigia-fix desde API central..."
+else
+  curl -sSL "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/fix.sh" -o "$INSTALL_DIR/fix.sh" 2>/dev/null || true
+fi
+if [ -f "$INSTALL_DIR/fix.sh" ]; then
+  chmod +x "$INSTALL_DIR/fix.sh"
+  ln -sf "$INSTALL_DIR/fix.sh" /usr/local/bin/vigia-fix
+fi
+
 # Guardar config con permisos protegidos
 echo "[*] Configurando credenciales en $INSTALL_DIR/config.json..."
 cat <<EOF > "$INSTALL_DIR/config.json"
