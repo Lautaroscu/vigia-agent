@@ -28,6 +28,10 @@ while [[ $# -gt 0 ]]; do
       SERVER_ID="$2"
       shift 2
       ;;
+    --client-id)
+      CLIENT_ID="$2"
+      shift 2
+      ;;
     --schedule)
       SCHEDULE="$2"
       shift 2
@@ -45,10 +49,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [ -z "$API_URL" ] || [ -z "$TOKEN" ]; then
-  echo "Uso: sudo ./install.sh --token <vga_live_...> --api <https://vigia.serra.agency> [--server-id <id>]"
-  echo "Ejemplo: sudo ./install.sh --token vga_live_9f81a7b... --api https://vigia.serra.agency --server-id serdeb13"
+if [ -z "$TOKEN" ]; then
+  echo "[!] Error: Falta el parámetro obligatorio --token <vga_live_...>"
+  echo "    Para generar un token, ingresá a la consola de Vigía (Clientes -> Generar API Key)."
+  echo "    Uso: sudo ./install.sh --token <vga_live_...> --api <https://vigia.serra.agency> [--server-id <id>]"
   exit 1
+fi
+
+if [ -z "$API_URL" ]; then
+  API_URL="https://vigia.serra.agency"
 fi
 
 echo "=========================================================="
@@ -63,6 +72,8 @@ mkdir -p "$INSTALL_DIR"
 SCRIPT_SRC="$(dirname "$0")/collector.py"
 if [ -f "$SCRIPT_SRC" ]; then
   cp "$SCRIPT_SRC" "$INSTALL_DIR/collector.py"
+elif curl -sSLf "${API_URL%/}/collector.py" -o "$INSTALL_DIR/collector.py" 2>/dev/null; then
+  echo "[*] Descargado collector.py desde API central..."
 else
   echo "[*] Descargando collector.py desde repositorio oficial..."
   curl -sSL "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/collector.py" -o "$INSTALL_DIR/collector.py"
