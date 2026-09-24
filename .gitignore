@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 *.log
 config.json
+
+# orchestrator (agentes)
+.orchestrator/workers/
+.orchestrator/doing/.heartbeat-*
+.orchestrator/doing/.claim-*
