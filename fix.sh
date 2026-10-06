@@ -34,6 +34,15 @@ if [ -z "$SERVER_ID" ] || [ -z "$API_URL" ] || [ -z "$TOKEN" ]; then
   exit 1
 fi
 
+# El script se ejecuta como root: solo se acepta por HTTPS (http solo en loopback, para dev).
+case "$API_URL" in
+  https://*|http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*) ;;
+  *)
+    echo "[!] Error: api_url debe usar HTTPS ($API_URL). Corregí $CONFIG_FILE."
+    exit 1
+    ;;
+esac
+
 echo "=========================================================="
 echo "🛡️  Vigía Ops — Descargando parche de remediación"
 echo "🖥️  Servidor: $SERVER_ID"
@@ -42,13 +51,27 @@ echo "🌐 API Central: $API_URL"
 echo "=========================================================="
 
 FIX_URL="$API_URL/api/v1/fix/$SERVER_ID/$CVE.sh"
-SCRIPT_CONTENT="$(curl -sSLf -H "Authorization: Bearer $TOKEN" "$FIX_URL" 2>/dev/null || true)"
+SCRIPT_FILE="$(mktemp /tmp/vigia-fix.XXXXXX.sh)"
+trap 'rm -f "$SCRIPT_FILE"' EXIT
+chmod 700 "$SCRIPT_FILE"
 
-if [ -z "$SCRIPT_CONTENT" ] || [[ "$SCRIPT_CONTENT" == *"detail"* ]] || [[ "$SCRIPT_CONTENT" == *"404"* ]]; then
+# curl -f devuelve exit != 0 ante cualquier HTTP >= 400 (401/404/5xx): no hace
+# falta inspeccionar el body, que puede contener "404"/"detail" legítimamente.
+# --proto =https impide que un redirect baje a http.
+PROTO_FLAGS=(--proto '=https' --proto-redir '=https')
+case "$API_URL" in http://*) PROTO_FLAGS=() ;; esac
+if ! curl -sSLf "${PROTO_FLAGS[@]}" -H "Authorization: Bearer $TOKEN" -o "$SCRIPT_FILE" "$FIX_URL" || [ ! -s "$SCRIPT_FILE" ]; then
   echo "[!] No se pudo obtener el script para $CVE en $SERVER_ID."
   echo "    Verificá que el CVE figure como activo en la consola central: $API_URL"
   exit 1
 fi
 
+# Un script truncado o corrupto no debe llegar a ejecutarse a medias como root.
+if ! bash -n "$SCRIPT_FILE"; then
+  echo "[!] El script recibido tiene errores de sintaxis; no se ejecuta."
+  exit 1
+fi
+
+echo "[*] Script recibido (sha256 $(sha256sum "$SCRIPT_FILE" | cut -d' ' -f1))"
 echo "[*] Ejecutando remediación con guardrails de seguridad y rollback guarantee..."
-echo "$SCRIPT_CONTENT" | bash
+bash "$SCRIPT_FILE"

@@ -10,6 +10,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SERVER_ID="$(hostname)"
+SERVER_ID_EXPLICIT=""
 API_URL=""
 TOKEN=""
 SCHEDULE="15 4 * * *" # 04:15 AM diario
@@ -26,6 +27,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --server-id)
       SERVER_ID="$2"
+      SERVER_ID_EXPLICIT=1
       shift 2
       ;;
     --client-id)
@@ -40,6 +42,7 @@ while [[ $# -gt 0 ]]; do
       # Compatibilidad con argumentos posicionales: install.sh [server_id] [api_url] [token]
       if [ -z "$API_URL" ] && [ -n "${2:-}" ]; then
         SERVER_ID="$1"
+        SERVER_ID_EXPLICIT=1
         API_URL="$2"
         TOKEN="${3:-}"
         break
@@ -60,6 +63,18 @@ if [ -z "$API_URL" ]; then
   API_URL="https://vigia.serra.agency"
 fi
 
+# Las keys `vga_live_{server_id}_{hex32}` quedan atadas a un server_id: la API
+# rechaza fix/notify si no coincide con el de config.json. Se toma de la key.
+if [[ "$TOKEN" =~ ^vga_live_(.+)_[0-9a-f]{32}$ ]]; then
+  TOKEN_SERVER_ID="${BASH_REMATCH[1]}"
+  if [ -n "$SERVER_ID_EXPLICIT" ] && [ "$SERVER_ID" != "$TOKEN_SERVER_ID" ]; then
+    echo "[!] Error: --server-id '$SERVER_ID' no coincide con el de la API key ('$TOKEN_SERVER_ID')."
+    echo "    Generá una key para '$SERVER_ID' o omití --server-id."
+    exit 1
+  fi
+  SERVER_ID="$TOKEN_SERVER_ID"
+fi
+
 echo "=========================================================="
 echo "🛡️  Instalando Vigía Agent para: $SERVER_ID"
 echo "🌐 API Central: $API_URL"
@@ -68,26 +83,36 @@ echo "=========================================================="
 INSTALL_DIR="/opt/vigia"
 mkdir -p "$INSTALL_DIR"
 
+# Copia local solo si install.sh se ejecuta como archivo desde el repo clonado.
+# Con `curl ... | bash`, $0 es "bash" y dirname apuntaría al cwd: ahí no se copia nada.
+LOCAL_SRC_DIR=""
+if [ -f "$0" ]; then
+  LOCAL_SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
 # Descargar o copiar collector.py
-SCRIPT_SRC="$(dirname "$0")/collector.py"
-if [ -f "$SCRIPT_SRC" ]; then
+SCRIPT_SRC="$LOCAL_SRC_DIR/collector.py"
+if [ -n "$LOCAL_SRC_DIR" ] && [ -f "$SCRIPT_SRC" ]; then
   cp "$SCRIPT_SRC" "$INSTALL_DIR/collector.py"
 elif curl -sSLf "${API_URL%/}/collector.py" -o "$INSTALL_DIR/collector.py" 2>/dev/null; then
   echo "[*] Descargado collector.py desde API central..."
 else
   echo "[*] Descargando collector.py desde repositorio oficial..."
-  curl -sSL "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/collector.py" -o "$INSTALL_DIR/collector.py"
+  if ! curl -sSLf "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/collector.py" -o "$INSTALL_DIR/collector.py"; then
+    echo "[!] Error: no se pudo descargar collector.py (ni de la API ni del repositorio)."
+    exit 1
+  fi
 fi
 chmod +x "$INSTALL_DIR/collector.py"
 
 # Descargar e instalar comando 'vigia-fix'
-FIX_SRC="$(dirname "$0")/fix.sh"
-if [ -f "$FIX_SRC" ]; then
+FIX_SRC="$LOCAL_SRC_DIR/fix.sh"
+if [ -n "$LOCAL_SRC_DIR" ] && [ -f "$FIX_SRC" ]; then
   cp "$FIX_SRC" "$INSTALL_DIR/fix.sh"
 elif curl -sSLf "${API_URL%/}/fix.sh" -o "$INSTALL_DIR/fix.sh" 2>/dev/null; then
   echo "[*] Descargado vigia-fix desde API central..."
 else
-  curl -sSL "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/fix.sh" -o "$INSTALL_DIR/fix.sh" 2>/dev/null || true
+  curl -sSLf "https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/fix.sh" -o "$INSTALL_DIR/fix.sh" 2>/dev/null || rm -f "$INSTALL_DIR/fix.sh"
 fi
 if [ -f "$INSTALL_DIR/fix.sh" ]; then
   chmod +x "$INSTALL_DIR/fix.sh"
