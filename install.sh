@@ -55,12 +55,12 @@ done
 if [ -z "$TOKEN" ]; then
   echo "[!] Error: Falta el parámetro obligatorio --token <vga_live_...>"
   echo "    Para generar un token, ingresá a la consola de Vigía (Clientes -> Generar API Key)."
-  echo "    Uso: sudo ./install.sh --token <vga_live_...> --api <https://vigia.serra.agency> [--server-id <id>]"
+  echo "    Uso: sudo ./install.sh --token <vga_live_...> --api <https://vigiaops.serra.agency> [--server-id <id>]"
   exit 1
 fi
 
 if [ -z "$API_URL" ]; then
-  API_URL="https://vigia.serra.agency"
+  API_URL="https://vigiaops.serra.agency"
 fi
 
 # Las keys `vga_live_{server_id}_{hex32}` quedan atadas a un server_id: la API
