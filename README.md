@@ -17,7 +17,7 @@ Para instalar el agente en tu servidor Linux/Docker:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Lautaroscu/vigia-agent/main/install.sh | sudo bash -s -- \
-  --api https://vigia.serra.agency \
+  --api https://vigiaops.serra.agency \
   --token vga_live_tu_token_aqui \
   --server-id mi-servidor-prod
 ```
