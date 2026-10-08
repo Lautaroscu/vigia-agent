@@ -82,6 +82,9 @@ echo "=========================================================="
 
 INSTALL_DIR="/opt/vigia"
 mkdir -p "$INSTALL_DIR"
+# El cron redirige a /var/log/vigia/cron.log: si el directorio no existe, cron
+# falla antes de lanzar python y no queda ningún rastro del error.
+mkdir -p /var/log/vigia
 
 # Copia local solo si install.sh se ejecuta como archivo desde el repo clonado.
 # Con `curl ... | bash`, $0 es "bash" y dirname apuntaría al cwd: ahí no se copia nada.

@@ -22,12 +22,17 @@ from datetime import datetime, timezone
 
 LOG = logging.getLogger("VigiaAgent")
 
+# Labels que pueden contener credenciales (p.ej. traefik ...basicauth.users=user:hash)
+# no salen del servidor.
+SENSITIVE_LABEL_TERMS = ("secret", "pass", "token", "key", "auth", "credential", "users")
+
 def setup_logger(log_file_path=None):
     LOG.setLevel(logging.INFO)
     fmt = logging.Formatter(
         "[%(asctime)s UTC] [%(levelname)s] [PID %(process)d] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
+    fmt.converter = time.gmtime  # el formato dice "UTC"
 
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(fmt)
@@ -207,7 +212,7 @@ def get_docker_containers():
             "version_envs": env_vars,
             "labels": {
                 k: v for k, v in labels.items()
-                if not any(sec in k.lower() for sec in ["secret", "pass", "token"])
+                if not any(sec in k.lower() for sec in SENSITIVE_LABEL_TERMS)
             }
         })
 
