@@ -509,6 +509,20 @@ def _run_syft(source, timeout=600):
         return None
 
 
+def _same_image(ref, container_image_id, syft_image_id):
+    """¿El tag que escaneó syft es la imagen que corre el contenedor?
+
+    Con el image store de containerd (Docker >= 29) el contenedor guarda el digest del
+    índice multi-arch y syft reporta el de la config: no son comparables entre sí. La
+    referencia es el ID que Docker le asigna hoy al tag local, que usa el mismo espacio
+    de nombres que el contenedor.
+    """
+    if not syft_image_id or syft_image_id == container_image_id:
+        return True
+    local_id = (run_command(["docker", "image", "inspect", "--format", "{{.Id}}", ref]) or "").strip()
+    return local_id == container_image_id
+
+
 def get_sboms(containers, scan_paths):
     """SBOM por imagen en uso (cacheado por image ID) + directorios de apps del host."""
     if not shutil.which("syft"):
@@ -538,7 +552,7 @@ def get_sboms(containers, scan_paths):
         if sb is None:
             sboms.append({"target": ref, "image_id": image_id, "packages": [], "error": "syft falló"})
             continue
-        if sb.get("image_id") and sb["image_id"] != image_id:
+        if not _same_image(ref, image_id, sb.get("image_id")):
             # El tag local apunta a otra imagen que la del contenedor: no atribuir paquetes ajenos
             sboms.append({"target": ref, "image_id": image_id, "packages": [],
                           "error": "el tag local apunta a otra imagen que la del contenedor (recrealo)"})

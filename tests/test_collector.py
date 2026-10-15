@@ -73,5 +73,24 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(self.c["compose"]["working_dir"], "/opt/stacks/edge")
 
 
+class SameImageTest(unittest.TestCase):
+    def test_ids_match_without_docker_call(self):
+        with mock.patch.object(collector, "run_command") as rc:
+            self.assertTrue(collector._same_image("nginx:1.20", "sha256:a", "sha256:a"))
+            self.assertTrue(collector._same_image("nginx:1.20", "sha256:a", None))
+            rc.assert_not_called()
+
+    def test_containerd_store_index_vs_config_digest(self):
+        # Docker >= 29: el contenedor guarda el digest del índice y syft el de la config.
+        with mock.patch.object(collector, "run_command", return_value="sha256:index"):
+            self.assertTrue(collector._same_image("nginx:1.20", "sha256:index", "sha256:config"))
+
+    def test_tag_moved_to_other_image(self):
+        with mock.patch.object(collector, "run_command", return_value="sha256:nueva"):
+            self.assertFalse(collector._same_image("nginx:1.20", "sha256:vieja", "sha256:config"))
+        with mock.patch.object(collector, "run_command", return_value=None):
+            self.assertFalse(collector._same_image("nginx:1.20", "sha256:vieja", "sha256:config"))
+
+
 if __name__ == "__main__":
     unittest.main()
