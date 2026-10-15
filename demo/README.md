@@ -17,7 +17,7 @@ Stack con imágenes viejas a propósito para mostrar Vigía de punta a punta: de
 
 ## Con Vagrant (recomendado)
 
-El [`Vagrantfile`](Vagrantfile) crea la VM en VirtualBox: Ubuntu Server 24.04 (`cloud-image/ubuntu-24.04`), 2 vCPU, 4 GB, disco de 30 GB, **solo red NAT** y SSH en `127.0.0.1:2222`. Al crearla corre `setup.sh` adentro. Requiere [VirtualBox](https://www.virtualbox.org/) y [Vagrant](https://developer.hashicorp.com/vagrant/install). Todos los comandos se corren desde `demo/`.
+El [`Vagrantfile`](Vagrantfile) crea la VM en VirtualBox: Debian 12 mínimo sin escritorio (`bento/debian-12`), 2 vCPU, 4 GB, disco dinámico (en el host ocupa solo lo escrito), **solo red NAT** y SSH en `127.0.0.1:2222`. Al crearla corre `setup.sh` adentro. Requiere [VirtualBox](https://www.virtualbox.org/) y [Vagrant](https://developer.hashicorp.com/vagrant/install). Todos los comandos se corren desde `demo/`.
 
 El token y la API van por variables de entorno, nunca en archivos del repo:
 
@@ -25,7 +25,8 @@ El token y la API van por variables de entorno, nunca en archivos del repo:
 |---|---|---|
 | `VIGIA_TOKEN` | key de **Add Server** (`vga_live_demo01_<hex>`) | Solo Docker + stack, sin agente. |
 | `VIGIA_API` | `https://vigiaops.serra.agency` o `http://127.0.0.1:8100` | Producción. |
-| `VIGIA_BOX` | otro box de Vagrant | `cloud-image/ubuntu-24.04`. |
+| `VIGIA_RAM` | MB de RAM de la VM | `4096`. Con 3072 suele alcanzar; el pico es `syft` en el primer SBOM. |
+| `VIGIA_BOX` | otro box de Vagrant (ej. `bento/debian-13`, `cloud-image/ubuntu-24.04`) | `bento/debian-12`. |
 
 `VIGIA_API` solo acepta `https://…` o `http://127.0.0.1:<puerto>`, igual que `vigia-fix`.
 

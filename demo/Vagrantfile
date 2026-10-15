@@ -20,10 +20,9 @@ unless api.start_with?("https://") || api.match?(%r{\Ahttp://127\.0\.0\.1(:\d+)?
 end
 
 Vagrant.configure("2") do |config|
-  # Imagen cloud oficial de Ubuntu: disco chico que cloud-init agranda al tamaño pedido.
-  config.vm.box = ENV.fetch("VIGIA_BOX", "cloud-image/ubuntu-24.04")
+  # Debian 12 mínimo, sin escritorio. Disco dinámico: ocupa en el host solo lo escrito.
+  config.vm.box = ENV.fetch("VIGIA_BOX", "bento/debian-12")
   config.vm.hostname = "vigia-demo"
-  config.vm.disk :disk, size: "30GB", primary: true
 
   # SSH en 127.0.0.1:2222 del host (reemplaza el reenvío automático de Vagrant).
   config.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2222, host_ip: "127.0.0.1"
@@ -34,7 +33,7 @@ Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |vb|
     vb.name = "vigia-demo"
     vb.cpus = 2
-    vb.memory = 4096
+    vb.memory = Integer(ENV.fetch("VIGIA_RAM", "4096"))
   end
 
   config.vm.provision "archivos", type: "file", source: "setup.sh", destination: "/tmp/vigia-demo/setup.sh"
@@ -44,6 +43,7 @@ Vagrant.configure("2") do |config|
   config.vm.provision "demo", type: "shell", env: { "VIGIA_TOKEN" => token, "VIGIA_API" => api },
                               inline: <<~'SHELL'
     set -euo pipefail
+    command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl; }
     args=(--api "$VIGIA_API")
     if [ -z "$VIGIA_TOKEN" ]; then
       echo "[i] Sin VIGIA_TOKEN: se levanta solo Docker y el stack."
