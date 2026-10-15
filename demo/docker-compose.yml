@@ -1,0 +1,65 @@
+# Stack de demo de Vigía: imágenes viejas a propósito. SOLO para una VM descartable
+# en red NAT (sin puertos entrantes). Nunca levantar esto en un servidor real.
+name: vigia-demo
+
+services:
+  # Web pública con imagen vieja (Debian bullseye): muchos CVEs del SO, expuesta en 0.0.0.0.
+  web:
+    image: nginx:1.20
+    ports:
+      - "0.0.0.0:8080:80"
+    restart: unless-stopped
+
+  # Base de datos EOL publicada en 0.0.0.0: imagen fin-de-vida + CVEs + exposición.
+  db:
+    image: postgres:9.6
+    environment:
+      POSTGRES_PASSWORD: demo-no-real
+    ports:
+      - "0.0.0.0:5432:5432"
+    restart: unless-stopped
+
+  # Caché EOL expuesta.
+  cache:
+    image: redis:4.0
+    ports:
+      - "0.0.0.0:6379:6379"
+    restart: unless-stopped
+
+  # Misma clase de riesgo pero solo en loopback: contraste "mitigado / no expuesto".
+  mongo:
+    image: mongo:3.6
+    ports:
+      - "127.0.0.1:27017:27017"
+    restart: unless-stopped
+
+  # App Node EOL detrás de loopback.
+  api:
+    image: node:12-alpine
+    command: ["node", "-e", "require('http').createServer((q,r)=>r.end('vigia demo api')).listen(3000)"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  # Hardening: socket de Docker montado.
+  monitor:
+    image: alpine:3.12
+    command: ["sleep", "infinity"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  # Hardening: contenedor --privileged.
+  debug-tools:
+    image: busybox:1.31
+    command: ["sleep", "infinity"]
+    privileged: true
+    restart: unless-stopped
+
+  # Servicio sano y actual, para que no salga todo en rojo.
+  whoami:
+    image: traefik/whoami:v1.10.3
+    ports:
+      - "127.0.0.1:8081:80"
+    read_only: true
+    restart: unless-stopped
