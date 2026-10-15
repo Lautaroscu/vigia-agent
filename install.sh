@@ -14,6 +14,7 @@ SERVER_ID_EXPLICIT=""
 API_URL=""
 TOKEN=""
 SCHEDULE="15 4 * * *" # 04:15 AM diario
+INSTALL_SYFT=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +38,10 @@ while [[ $# -gt 0 ]]; do
     --schedule)
       SCHEDULE="$2"
       shift 2
+      ;;
+    --no-syft)
+      INSTALL_SYFT=""
+      shift
       ;;
     *)
       # Compatibilidad con argumentos posicionales: install.sh [server_id] [api_url] [token]
@@ -122,6 +127,15 @@ if [ -f "$INSTALL_DIR/fix.sh" ]; then
   ln -sf "$INSTALL_DIR/fix.sh" /usr/local/bin/vigia-fix
 fi
 
+# Syft: genera el SBOM de cada imagen (solo inventario, sin base de vulnerabilidades en el host).
+# El matching contra OSV/KEV/EPSS lo hace la API central.
+if [ -n "$INSTALL_SYFT" ] && ! command -v syft >/dev/null 2>&1; then
+  echo "[*] Instalando syft (SBOM de imágenes) en /usr/local/bin..."
+  if ! curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin ${SYFT_VERSION:-}; then
+    echo "[!] No se pudo instalar syft: se reportará solo el inventario del host (reintentá o usá --no-syft)."
+  fi
+fi
+
 # Guardar config con permisos protegidos
 echo "[*] Configurando credenciales en $INSTALL_DIR/config.json..."
 cat <<EOF > "$INSTALL_DIR/config.json"
@@ -134,17 +148,22 @@ EOF
 chmod 600 "$INSTALL_DIR/config.json"
 
 # Configurar cron
+mkdir -p /var/log/vigia
 CRON_FILE="/etc/cron.d/vigia-agent"
 echo "[*] Registrando tarea programada en $CRON_FILE..."
 cat <<EOF > "$CRON_FILE"
 # Vigía Agent - Escaneo programado de seguridad
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 $SCHEDULE root /usr/bin/python3 $INSTALL_DIR/collector.py > /var/log/vigia/cron.log 2>&1
 EOF
 chmod 644 "$CRON_FILE"
 
 # Validar ejecución inmediata
-echo "[*] Ejecutando escaneo inicial de verificación..."
-/usr/bin/python3 "$INSTALL_DIR/collector.py"
+echo "[*] Ejecutando escaneo inicial de verificación (con SBOM de imágenes puede tardar unos minutos)..."
+if ! /usr/bin/python3 "$INSTALL_DIR/collector.py"; then
+  echo "[!] El escaneo inicial falló; revisá /var/log/vigia/collector.log. El cron queda programado igual."
+  exit 1
+fi
 
 echo "=========================================================="
 echo "✅ ¡Vigía Agent instalado y verificado exitosamente!"

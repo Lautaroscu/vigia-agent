@@ -1,9 +1,10 @@
 # Vigía Agent
 
-Agente liviano que corre por cron en cada servidor Linux con Docker monitoreado por [Vigía Ops](https://github.com/Lautaroscu/vigia-ops). Una vez por día junta el inventario de contenedores y lo envía por HTTPS a la API central, que detecta CVEs explotados (CISA KEV), arma el reporte diario y genera los scripts de remediación.
+Agente liviano que corre por cron en cada servidor Linux con Docker monitoreado por [Vigía Ops](https://github.com/Lautaroscu/vigia-ops). Una vez por día junta el inventario del host y de sus contenedores y lo envía por HTTPS a la API central, que detecta vulnerabilidades (OSV.dev, priorizadas con CISA KEV y EPSS), arma el reporte diario y genera los scripts de remediación.
 
-- **Python 3 de la librería estándar**: sin pip, sin daemons, sin puertos abiertos ni acceso SSH entrante.
-- **Rápido**: ~0,2 s de recolección más el envío.
+- **Python 3 de la librería estándar**: sin pip, sin daemons, sin puertos abiertos ni acceso SSH entrante. Opcionalmente usa [`syft`](https://github.com/anchore/syft) para el SBOM de las imágenes (solo inventario; el matching de vulnerabilidades lo hace la API).
+- **Liviano**: el inventario del host tarda segundos. El SBOM de cada imagen se cachea 7 días por image ID en `/var/lib/vigia/sbom`, así que solo la primera corrida (o una imagen nueva) tarda minutos.
+- **Envío robusto**: payload comprimido con gzip, timeout de 60 s y hasta 3 intentos ante errores de red o 5xx.
 - **No lee datos ni secretos**: de las variables de entorno solo toma las de versión (`*_VERSION`, `*_TAG`…) que no contengan `KEY/SECRET/PASS/TOKEN`; descarta labels con `secret/pass/token/key/auth/credential/users`.
 
 ## Qué recopila
@@ -16,12 +17,19 @@ Agente liviano que corre por cron en cada servidor Linux con Docker monitoreado 
 | Puertos publicados (`0.0.0.0` vs `127.0.0.1`) | Severidad según exposición; alerta de bases de datos expuestas. |
 | Labels de Docker Compose (proyecto, servicio, `working_dir`, archivos) | Que `fix.sh` actualice el servicio correcto. |
 | Flags CIS: `--privileged`, `docker.sock` montado, usuario root, rootfs read-only | Recomendaciones de hardening. |
+| Paquetes del SO (`dpkg`/`rpm`) con su paquete fuente | Matching de CVEs del host contra OSV. |
+| Sockets en escucha con proceso, binario, paquete dueño y contenedor | Qué está realmente expuesto y a qué paquete corresponde. |
+| Servicios systemd en ejecución | Inventario del host. |
+| Config de seguridad del host: opciones de `sshd` (puerto, root login, password auth…), estado del firewall (ufw/nftables/iptables), actualizaciones automáticas, `reboot-required`, opciones de `/etc/docker/daemon.json` | Recomendaciones de hardening del host. |
+| SBOM (con `syft`) de cada imagen en uso y de `/opt`, `/srv`, `/var/www` | Matching de dependencias de aplicación (npm, pip, Go, Java…). |
 
 Para ver exactamente qué se enviaría, sin enviar nada:
 
 ```bash
-python3 collector.py --dry-run
+python3 collector.py --dry-run             # agregá --no-sbom para saltear syft
 ```
+
+En `config.json`, `"sbom": false` desactiva el SBOM y `"scan_paths": [...]` cambia los directorios que se escanean (por defecto `/opt`, `/srv`, `/var/www`).
 
 ## Instalación
 
@@ -34,7 +42,7 @@ curl -sSL https://vigiaops.serra.agency/install.sh | sudo bash -s -- \
   --api https://vigiaops.serra.agency
 ```
 
-Opciones: `--server-id` (por defecto se toma de la key), `--schedule "15 4 * * *"` (expresión cron, UTC en servidores en UTC).
+Opciones: `--server-id` (por defecto se toma de la key), `--schedule "15 4 * * *"` (expresión cron, UTC en servidores en UTC), `--no-syft` (no instala `syft`; se reporta solo el inventario del host).
 
 El instalador deja:
 
@@ -46,7 +54,7 @@ El instalador deja:
 | `/etc/cron.d/vigia-agent` | `15 4 * * * root /usr/bin/python3 /opt/vigia/collector.py > /var/log/vigia/cron.log 2>&1` |
 | `/var/log/vigia/collector.log` | Log rotativo (5 MB × 3), timestamps UTC. |
 
-Al terminar corre un escaneo de verificación; tiene que terminar con `Reporte enviado con éxito (HTTP 200)`.
+Si `syft` no está, el instalador lo instala en `/usr/local/bin`. Al terminar corre un escaneo de verificación; tiene que terminar con `Reporte enviado con éxito (HTTP 200)`. La primera vez puede tardar unos minutos por el SBOM de las imágenes. Si el escaneo falla, el cron queda programado igual y el instalador sale con error.
 
 La API central genera su reporte diario a las 05:00 UTC: si se cambia la hora del cron, conviene dejarlo antes de esa hora (o ajustar `VIGIA_DAILY_REPORT_TIME` en la API).
 
