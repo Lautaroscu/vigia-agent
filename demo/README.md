@@ -47,7 +47,7 @@ sudo /usr/bin/python3 /opt/vigia/collector.py
 ## Limitaciones conocidas
 
 - **Escaneo de puertos desde la API:** con NAT, la API no llega a la VM, así que su escaneo externo de puertos no encuentra nada. La exposición se ve igual, porque sale de los puertos publicados en `0.0.0.0` que reporta el agente.
-- **`vigia-fix` sobre hallazgos de OSV:** hoy la API usa como tag de imagen la versión corregida del *paquete* (por ejemplo `3.0.15-1~deb12u1`). Eso da un 409 o un tag de imagen que no existe, y el script vuelve atrás. Hasta que se corrija en vigia-ops, en el video la remediación se puede mostrar como vuelta atrás segura, o dejarla para una segunda toma.
+- **`vigia-fix` sobre hallazgos de OSV:** actualiza la imagen al tag más nuevo de su misma línea en Docker Hub: misma variante y mismo major (en bases de datos, mismo major.minor). La mejor toma es `web` (`nginx:1.20` → la última `1.x`). En `db`, `cache` y `mongo` solo sube al último parche de la misma versión, así que muchos CVEs del SO siguen ahí. Los hallazgos de paquetes del host se corrigen con `apt`/`dnf`, no con `vigia-fix`.
 
 ## Limpiar
 
