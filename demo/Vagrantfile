@@ -1,0 +1,63 @@
+# -*- mode: ruby -*-
+# VM descartable para la demo de Vigía (ver README.md de esta carpeta).
+#
+#   vagrant up                                        # solo Docker + stack vulnerable
+#   VIGIA_TOKEN=vga_live_demo01_xxx vagrant up        # + agente contra producción
+#   VIGIA_TOKEN=... VIGIA_API=http://127.0.0.1:8100 vagrant up   # + agente contra la API local (túnel)
+#
+# Red solo NAT: la VM sale a internet pero nadie de la red llega a sus servicios
+# vulnerables. Nunca agregar un adaptador puente (public_network).
+
+PROD_API = "https://vigiaops.serra.agency"
+
+token = ENV.fetch("VIGIA_TOKEN", "").strip
+api = ENV.fetch("VIGIA_API", "").strip.chomp("/")
+api = PROD_API if api.empty?
+
+# vigia-fix solo acepta https o http://127.0.0.1 (la API local llega por túnel ssh -R).
+unless api.start_with?("https://") || api.match?(%r{\Ahttp://127\.0\.0\.1(:\d+)?\z})
+  abort "[!] VIGIA_API tiene que ser https://... o http://127.0.0.1:<puerto> (recibido: #{api})"
+end
+
+Vagrant.configure("2") do |config|
+  # Imagen cloud oficial de Ubuntu: disco chico que cloud-init agranda al tamaño pedido.
+  config.vm.box = ENV.fetch("VIGIA_BOX", "cloud-image/ubuntu-24.04")
+  config.vm.hostname = "vigia-demo"
+  config.vm.disk :disk, size: "30GB", primary: true
+
+  # SSH en 127.0.0.1:2222 del host (reemplaza el reenvío automático de Vagrant).
+  config.vm.network "forwarded_port", id: "ssh", guest: 22, host: 2222, host_ip: "127.0.0.1"
+
+  # Sin carpeta compartida: no depende de las Guest Additions. Los archivos se copian abajo.
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "vigia-demo"
+    vb.cpus = 2
+    vb.memory = 4096
+  end
+
+  config.vm.provision "archivos", type: "file", source: "setup.sh", destination: "/tmp/vigia-demo/setup.sh"
+  config.vm.provision "archivos-compose", type: "file", source: "docker-compose.yml",
+                                          destination: "/tmp/vigia-demo/docker-compose.yml"
+
+  config.vm.provision "demo", type: "shell", env: { "VIGIA_TOKEN" => token, "VIGIA_API" => api },
+                              inline: <<~'SHELL'
+    set -euo pipefail
+    args=(--api "$VIGIA_API")
+    if [ -z "$VIGIA_TOKEN" ]; then
+      echo "[i] Sin VIGIA_TOKEN: se levanta solo Docker y el stack."
+    elif curl -fsS --max-time 5 -o /dev/null "$VIGIA_API/install.sh"; then
+      args+=(--token "$VIGIA_TOKEN")
+    else
+      echo "[!] No llego a $VIGIA_API desde la VM: se levanta solo Docker y el stack."
+      case "$VIGIA_API" in
+        http://127.0.0.1*)
+          port="${VIGIA_API##*:}"
+          echo "    Abrí el túnel en otra terminal (en demo/):  vagrant ssh -- -N -R $port:127.0.0.1:$port"
+          echo "    y después instalá el agente con:            vagrant provision --provision-with demo" ;;
+      esac
+    fi
+    bash /tmp/vigia-demo/setup.sh "${args[@]}"
+  SHELL
+end

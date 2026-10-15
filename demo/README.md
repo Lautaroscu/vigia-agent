@@ -15,13 +15,90 @@ Stack con imágenes viejas a propósito para mostrar Vigía de punta a punta: de
 | `debug-tools` | `busybox:1.31` | — | `--privileged`. |
 | `whoami` | `traefik/whoami:v1.10.3` | `127.0.0.1:8081` | Servicio sano, para contraste. |
 
-## 1. Crear la VM
+## Con Vagrant (recomendado)
+
+El [`Vagrantfile`](Vagrantfile) crea la VM en VirtualBox: Ubuntu Server 24.04 (`cloud-image/ubuntu-24.04`), 2 vCPU, 4 GB, disco de 30 GB, **solo red NAT** y SSH en `127.0.0.1:2222`. Al crearla corre `setup.sh` adentro. Requiere [VirtualBox](https://www.virtualbox.org/) y [Vagrant](https://developer.hashicorp.com/vagrant/install). Todos los comandos se corren desde `demo/`.
+
+El token y la API van por variables de entorno, nunca en archivos del repo:
+
+| Variable | Valor | Si falta |
+|---|---|---|
+| `VIGIA_TOKEN` | key de **Add Server** (`vga_live_demo01_<hex>`) | Solo Docker + stack, sin agente. |
+| `VIGIA_API` | `https://vigiaops.serra.agency` o `http://127.0.0.1:8100` | Producción. |
+| `VIGIA_BOX` | otro box de Vagrant | `cloud-image/ubuntu-24.04`. |
+
+`VIGIA_API` solo acepta `https://…` o `http://127.0.0.1:<puerto>`, igual que `vigia-fix`.
+
+### 1. Crear
+
+En la consola de Vigía, crear un cliente "Demo" y hacer **Add Server** con `server_id` `demo01`.
+
+**Contra producción** (PowerShell):
+
+```powershell
+$env:VIGIA_TOKEN = "vga_live_demo01_<hex>"
+vagrant up
+```
+
+**Contra la API local de la PC** (`127.0.0.1:8100` en Windows). La VM la alcanza por un túnel SSH inverso, que solo se puede abrir cuando la VM ya existe; por eso son dos pasos:
+
+```powershell
+$env:VIGIA_TOKEN = "vga_live_demo01_<hex>"
+$env:VIGIA_API = "http://127.0.0.1:8100"
+vagrant up                                  # Docker + stack; avisa que todavía no llega a la API
+```
+
+En otra terminal, también en `demo/`, abrir el túnel y dejarlo abierto mientras dure la demo (el agente lo necesita en cada corrida):
+
+```powershell
+vagrant ssh -- -N -R 8100:127.0.0.1:8100
+```
+
+Y en la primera terminal (con las mismas variables), instalar el agente:
+
+```powershell
+vagrant provision --provision-with demo
+```
+
+Sin `VIGIA_TOKEN` se levanta solo Docker y el stack; el agente se puede agregar después definiendo las variables y corriendo `vagrant provision --provision-with demo`.
+
+Para entrar: `vagrant ssh` (o `ssh -p 2222 vagrant@127.0.0.1` con la clave de `.vagrant/machines/default/virtualbox/private_key`).
+
+### 2. Instantánea
+
+Con todo levantado y el primer reporte en la consola:
+
+```powershell
+vagrant snapshot save todo-vulnerable
+```
+
+### 3. Restaurar
+
+Antes de cada toma de remediación:
+
+```powershell
+vagrant snapshot restore todo-vulnerable --no-provision
+```
+
+`--no-provision` evita que vuelva a correr `setup.sh`. Con la API local, el túnel se corta al restaurar: volver a abrirlo con `vagrant ssh -- -N -R 8100:127.0.0.1:8100`. `vagrant snapshot list` muestra las instantáneas guardadas.
+
+### 4. Destruir
+
+```powershell
+vagrant destroy -f
+```
+
+Borra la VM con sus instantáneas. El servidor `demo01` sigue en la consola de Vigía hasta borrarlo ahí.
+
+## A mano en VirtualBox
+
+### 1. Crear la VM
 
 - Ubuntu Server 24.04 o Debian 12, con 2 vCPU, 4 GB de RAM y 30 GB de disco.
 - **Red: NAT** (la opción por defecto). No usar el modo puente (Bridged): la VM tiene que poder salir a internet sin que nadie pueda entrar.
 - Red → Reenvío de puertos: `127.0.0.1:2222 → 22`, para entrar desde Windows con `ssh -p 2222 usuario@127.0.0.1`.
 
-## 2. Preparar
+### 2. Preparar
 
 En la consola de Vigía, crear un cliente "Demo" y hacer **Add Server** con `server_id` `demo01`. Después, en la VM:
 
@@ -34,11 +111,13 @@ Si el repo es privado, copiar la carpeta desde Windows: `scp -P 2222 -r demo usu
 
 Esto instala Docker, levanta el stack en `/opt/vigia-demo` e instala el agente con `syft`. La primera corrida tarda varios minutos por el SBOM de las imágenes; las siguientes usan el caché.
 
-## 3. Instantánea
+Para usar la API local, agregar `--api http://127.0.0.1:8100` y entrar con el túnel abierto: `ssh -p 2222 -R 8100:127.0.0.1:8100 usuario@127.0.0.1`.
+
+### 3. Instantánea
 
 Con todo levantado y el primer reporte en la consola, sacar una instantánea de la VM en VirtualBox. Antes de cada toma de remediación, volver a esa instantánea.
 
-## 4. Correr el agente durante la grabación
+## Correr el agente durante la grabación
 
 ```bash
 sudo /usr/bin/python3 /opt/vigia/collector.py
@@ -55,4 +134,4 @@ sudo /usr/bin/python3 /opt/vigia/collector.py
 sudo docker compose -f /opt/vigia-demo/docker-compose.yml down -v
 ```
 
-O directamente borrar la VM.
+O directamente borrar la VM (`vagrant destroy -f` si se creó con Vagrant).
