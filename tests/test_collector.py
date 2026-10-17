@@ -36,7 +36,7 @@ INSPECT = [{
 }]
 
 
-def fake_run(cmd, timeout=10):
+def fake_run(cmd, timeout=10, allow_fail=False):
     if cmd[:2] == ["docker", "ps"]:
         return "0123456789ab"
     if cmd[:2] == ["docker", "inspect"]:
